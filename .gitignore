@@ -1,0 +1,22 @@
+# Executables
+*.exe
+*.out
+
+# Object files
+*.o
+*.obj
+
+# Build folders
+build/
+bin/
+
+# IDE files
+.vscode/
+.idea/
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+
+# Logs
+*.log
