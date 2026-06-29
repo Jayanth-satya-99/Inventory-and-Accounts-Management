@@ -34,7 +34,7 @@ class StockItem: public BaseEntity{
         }
     }
     ~StockItem()=default;
-    void addStock(std::string batchNo,int qty,DateTime expiryDate=DateTime() ,int purchaseOrderId){
+    void addStock(std::string batchNo,int qty ,int purchaseOrderId,DateTime expiryDate=DateTime()){
         ExpiryBatch batch;
         batch.batchNo_=batchNo;
         batch.expiryDate_=expiryDate;
@@ -68,4 +68,26 @@ class StockItem: public BaseEntity{
             }
         }
     }
+    ExpiryBatch* getBatchByNo(std::string batchNo){
+        for(int i=0;i<batches_.size();i++){
+            if(batches_[i].batchNo_==batchNo)return &batches_[i];
+        }
+        return nullptr;
+    }
+   std:: vector<ExpiryBatch*>getExpiringBefore(DateTime date){
+        std::vector<ExpiryBatch*>list;
+        for(int i=0;i<batches_.size();i++){
+            if(batches_[i].expiryDate_<date)list.push_back(&batches_[i]);
+        }
+        return list;
+   }
+   bool isLowStock()const{ return quantity_<minStockLevel_;}
+   ProductVariant* getProductVariant() const{ return variant_;}
+   void setMinStockLevel(int qty){minStockLevel_=qty;}
+
+   void Validate()const override{}
+    void Display()const override{}
+    std::string Serialize()const override{return "";}
+    std::string GetEntityType()const override{return " ";}
+
 };

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "BaseEntity.hpp"
-#include "ProductVarient.hpp"
+#include "ProductVariant.hpp"
 
 #include<iostream>
 #include<stdexcept>
