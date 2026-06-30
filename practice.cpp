@@ -1,97 +1,131 @@
 #pragma once
-#include "Customer.hpp"
+
+#include "BaseEntity.hpp"
+#include "DateTime.hpp"
+#include "ProductVariant.hpp"
+#include "StockItem.hpp"
+#include "Product.hpp"
+
+#include <iostream>
 #include <stdexcept>
-class PermanentCustomer : public Customer
+#include <string>
+#include <vector>
+
+// StockManager — Singleton, coordinates all StockItems
+class StockManager
 {
 private:
-    double creditLimit_;
-    double currentLoanBalance_;
-    double advanceBalance_;
+    std::vector<StockItem *> stock_;
+
+    StockManager() = default;
+
 public:
-    PermanentCustomer(const std::string& name, const std::string& phone,
-                      const std::string& email, const std::string& address,
-                      double creditLimit = 0.0)
-        : Customer(name, phone, email, address),
-          creditLimit_(creditLimit), currentLoanBalance_(0.0), advanceBalance_(0.0)
+    static StockManager &getInstance()
     {
-        validateMembershipFields(phone, address, "PermanentCustomer");
-        if (creditLimit_ < 0) throw std::invalid_argument("PermanentCustomer: creditLimit cannot be negative");
+        static StockManager instance;
+        return instance;
     }
-    PermanentCustomer(int id, DateTime& c, DateTime& u,
-                      const std::string& name, const std::string& phone,
-                      const std::string& email, const std::string& address,
-                      double totalPurchase, int totalBills,
-                      double creditLimit, double currentLoanBalance, double advance)
-        : Customer(id, c, u, name, phone, email, address, totalPurchase, totalBills),
-          creditLimit_(creditLimit), currentLoanBalance_(currentLoanBalance), advanceBalance_(advance)
+    StockManager(const StockManager &) = delete;
+    StockManager &operator=(const StockManager &) = delete;
+
+    // ── Registration ────────────────────────────────────────────────────────
+    StockItem *registerVariant(ProductVariant *variant, int minStockLevel = 0)
     {
-        validateMembershipFields(phone, address, "PermanentCustomer");
-        if (creditLimit_ < 0) throw std::invalid_argument("PermanentCustomer: creditLimit cannot be negative");
-        if (currentLoanBalance_ < 0) throw std::invalid_argument("PermanentCustomer: loanBalance cannot be negative");
-        if (advanceBalance_ < 0) throw std::invalid_argument("PermanentCustomer: advance cannot be negative");
+        if (getStockItemByVariantId(variant->getId()))
+            throw std::runtime_error("StockManager: variant already registered");
+        stock_.push_back(new StockItem(variant, minStockLevel));
+        return stock_.back();
     }
-    double getCreditLimit()        const { return creditLimit_; }
-    double getCurrentLoanBalance() const { return currentLoanBalance_; }
-    double getAvailableCredit()    const { return creditLimit_ - currentLoanBalance_; }
-    double getAdvanceBalance()     const { return advanceBalance_; }
-    Party_Type  getCustomerType()  const override { return Party_Type::PermanentCustomer; }
-    std::string GetEntityType()    const override { return "PermanentCustomer"; }
-    bool canBuyOnLoan()            const override { return true; }
-    bool canTakeLoan(double amount) const {
-        if (amount <= 0) return false;
-        return (currentLoanBalance_ + amount) <= creditLimit_;
+
+    // ── Lookup ──────────────────────────────────────────────────────────────
+    StockItem *getStockItemByVariantId(int variantId) const
+    {
+        for (StockItem *item : stock_)
+            if (item->getProductVariant()->getId() == variantId)
+                return item;
+        return nullptr;
     }
-    void setCreditLimit(double limit) {
-        if (limit < 0) throw std::invalid_argument("PermanentCustomer: creditLimit cannot be negative");
-        creditLimit_ = limit; MarkUpdated();
+
+    StockItem *getStockItemById(int id) const
+    {
+        for (StockItem *item : stock_)
+            if (item->getId() == id)
+                return item;
+        return nullptr;
     }
-    void addLoanBalance(double amount) {
-        if (amount <= 0) throw std::invalid_argument("PermanentCustomer: loan amount must be positive");
-        if (currentLoanBalance_ + amount > creditLimit_) throw std::runtime_error("PermanentCustomer: exceeds credit limit");
-        currentLoanBalance_ += amount; MarkUpdated();
+
+    std::vector<StockItem *> getStockItemsByProduct(Product *product) const
+    {
+        std::vector<StockItem *> list;
+        for (StockItem *item : stock_)
+            if (item->getProductVariant()->getProduct() == product)
+                list.push_back(item);
+        return list;
     }
-    void repayLoan(double amount) {
-        if (amount <= 0) throw std::invalid_argument("PermanentCustomer: repay amount must be positive");
-        if (amount > currentLoanBalance_) throw std::runtime_error("PermanentCustomer: repay amount exceeds outstanding balance");
-        currentLoanBalance_ -= amount; MarkUpdated();
+
+    // ── Stock movement ──────────────────────────────────────────────────────
+    void addStock(int variantId, int qty, int purchaseOrderId,
+                  const std::string &batchNo = "", DateTime expiryDate = DateTime())
+    {
+        StockItem *item = getStockItemByVariantId(variantId);
+        if (!item)
+            throw std::runtime_error("StockManager: no StockItem registered for this variant");
+        item->addStock(qty, purchaseOrderId, batchNo, expiryDate);
     }
-    void addAdvance(double amount) {
-        if (amount <= 0) throw std::invalid_argument("PermanentCustomer: amount to addAdvance must be positive");
-        advanceBalance_ += amount; MarkUpdated();
+
+    void removeStock(int variantId, int qty, const std::string &batchNo = "")
+    {
+        StockItem *item = getStockItemByVariantId(variantId);
+        if (!item)
+            throw std::runtime_error("StockManager: no StockItem registered for this variant");
+        item->removeStock(qty, batchNo);
     }
-    void useAdvance(double amount) {
-        if (amount <= 0) throw std::invalid_argument("PermanentCustomer: should use positive amount");
-        if (amount > advanceBalance_) throw std::invalid_argument("PermanentCustomer: advance use amount exceeds advanceBalance");
-        advanceBalance_ -= amount; MarkUpdated();
+
+    // ── Queries ─────────────────────────────────────────────────────────────
+    std::vector<StockItem *> getLowStockItems() const
+    {
+        std::vector<StockItem *> list;
+        for (StockItem *item : stock_)
+            if (item->isLowStock())
+                list.push_back(item);
+        return list;
     }
-    void Display() const override {
-        Party::Display();
-        std::cout << "  [Permanent]"
-                  << "  CreditLimit=Rs" << creditLimit_
-                  << "  LoanBalance=Rs" << currentLoanBalance_
-                  << "  AvailableCredit=Rs" << getAvailableCredit()
-                  << "  AdvanceBalance=Rs" << advanceBalance_
-                  << "  TotalPurchases=Rs" << getTotalPurchases()
-                  << "  Bills=" << getTotalBills() << "\n";
+
+    // All expiring batches across all variants, flattened into one list
+    std::vector<ExpiryBatch *> getExpiringBefore(DateTime date) const
+    {
+        std::vector<ExpiryBatch *> list;
+        for (StockItem *item : stock_)
+        {
+            auto l = item->getExpiringBefore(date);
+            list.insert(list.end(), l.begin(), l.end());
+        }
+        return list;
     }
-    std::string Serialize() const override {
-        return Party::Serialize() + "|Permanent"
-             + "|" + std::to_string(creditLimit_)
-             + "|" + std::to_string(currentLoanBalance_)
-             + "|" + std::to_string(advanceBalance_)
-             + "|" + std::to_string(getTotalPurchases())
-             + "|" + std::to_string(getTotalBills());
+
+    const std::vector<StockItem *> &getAllStockItems() const { return stock_; }
+
+    // ── Display ─────────────────────────────────────────────────────────────
+    void displayAll() const
+    {
+        std::cout << "\n===================== Stock =====================\n";
+        for (StockItem *item : stock_)
+            item->Display();
+        std::cout << "==================================================\n";
     }
-    void Validate() const override {
-        Customer::Validate();
-        if (phone_.empty()) throw std::runtime_error("PermanentCustomer: phone cannot be empty");
-        if (phone_.size() != 10) throw std::runtime_error("PermanentCustomer: phone must be 10 digits");
-        for (size_t i = 0; i < 10; i++)
-            if (phone_[i] > '9' || phone_[i] < '0') throw std::runtime_error("PermanentCustomer: phone digits 0-9 only");
-        if (address_.empty()) throw std::runtime_error("PermanentCustomer: address is empty");
-        if (creditLimit_ < 0) throw std::runtime_error("PermanentCustomer: creditLimit is negative");
-        if (currentLoanBalance_ < 0) throw std::runtime_error("PermanentCustomer: loanBalance is negative");
-        if (currentLoanBalance_ > creditLimit_) throw std::runtime_error("PermanentCustomer: loanBalance exceeds creditLimit");
-        if (advanceBalance_ < 0) throw std::runtime_error("PermanentCustomer: advanceBalance is negative");
+
+    void displayLowStock() const
+    {
+        std::cout << "\n================ Low Stock Alert ================\n";
+        for (StockItem *item : getLowStockItems())
+            item->Display();
+        std::cout << "==================================================\n";
+    }
+
+    // ── Destructor ──────────────────────────────────────────────────────────
+    ~StockManager()
+    {
+        for (StockItem *item : stock_)
+            delete item;
     }
 };

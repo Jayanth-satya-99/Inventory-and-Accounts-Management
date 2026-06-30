@@ -12,7 +12,7 @@ struct LedgerEntry{
 };
 struct ExpiryBatch{
     std::string batchNo_;
-    ProductVariant* varaiant_;
+    ProductVariant* variant_;
     int quantity_;
     DateTime expiryDate_;
     int purchaseOrderId_;
