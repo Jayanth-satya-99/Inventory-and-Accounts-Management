@@ -6,6 +6,11 @@
 #include "TemporaryCustomer.hpp"
 #include "RetailShop.hpp"
 #include "Category.hpp"
+#include "PurchaseOrder.hpp"
+#include "SaleOrder.hpp"
+#include "CustomerLedger.hpp"
+#include "CompanyLedger.hpp"
+#include <unordered_map>
 
 #include <vector>
 #include <string>
@@ -30,7 +35,10 @@ private:
     std::vector<PermanentCustomer*> permCustomers_;
     std::vector<TemporaryCustomer*> tempCustomers_;
     std::vector<RetailShop*>        retailShops_;
-
+    std::vector<SaleOrder*>     allSaleOrders_;
+    std::vector<PurchaseOrder*> allPurchaseOrders_;
+    std::unordered_map<int, CustomerLedgerPage*> customerLedgers_;
+    std::unordered_map<int, CompanyLedgerPage*>  companyLedgers_;
     // ── Singleton ─────────────────────────────────────────────────────────────
     PartyManager() = default;
 
@@ -42,6 +50,45 @@ public:
     }
     PartyManager(const PartyManager&)            = delete;
     PartyManager& operator=(const PartyManager&) = delete;
+    // ── Destructor ────────────────────────────────────────────────────────────
+    ~PartyManager()
+    {
+        for (auto* p : companies_)    delete p;
+        for (auto* p : distributors_) delete p;
+        for (auto* p : permCustomers_)delete p;
+        for (auto* p : tempCustomers_)delete p;
+        for (auto* p : retailShops_)  delete p;
+        
+    }
+
+    void registerSaleOrder(SaleOrder* order)     { allSaleOrders_.push_back(order); }
+    void registerPurchaseOrder(PurchaseOrder* order) { allPurchaseOrders_.push_back(order); }
+
+    const std::vector<SaleOrder*>&     getAllSaleOrders()     const { return allSaleOrders_; }
+    const std::vector<PurchaseOrder*>& getAllPurchaseOrders() const { return allPurchaseOrders_; }
+
+
+    CustomerLedgerPage* getOrCreateCustomerLedger(Party* party)
+    {
+        auto it = customerLedgers_.find(party->getId());
+        if (it != customerLedgers_.end()) return it->second;
+        CustomerLedgerPage* page = new CustomerLedgerPage(party);
+        customerLedgers_[party->getId()] = page;
+        return page;
+    }
+
+    CompanyLedgerPage* getOrCreateCompanyLedger(Party* party)
+    {
+        auto it = companyLedgers_.find(party->getId());
+        if (it != companyLedgers_.end()) return it->second;
+        CompanyLedgerPage* page = new CompanyLedgerPage(party);
+        companyLedgers_[party->getId()] = page;
+        return page;
+    }
+
+    const std::unordered_map<int, CustomerLedgerPage*>& getAllCustomerLedgers() const { return customerLedgers_; }
+    const std::unordered_map<int, CompanyLedgerPage*>&  getAllCompanyLedgers()  const { return companyLedgers_; }
+
 
     // ═══════════════════════════════════════════════════════════════
     //  Company
@@ -87,7 +134,6 @@ public:
         }
         return false;
     }
-
     // ═══════════════════════════════════════════════════════════════
     //  Distributor
     // ═══════════════════════════════════════════════════════════════
@@ -322,14 +368,5 @@ public:
                      permCustomers_.size() + tempCustomers_.size() +
                      retailShops_.size());
     }
-
-    // ── Destructor ────────────────────────────────────────────────────────────
-    ~PartyManager()
-    {
-        for (auto* p : companies_)    delete p;
-        for (auto* p : distributors_) delete p;
-        for (auto* p : permCustomers_)delete p;
-        for (auto* p : tempCustomers_)delete p;
-        for (auto* p : retailShops_)  delete p;
-    }
+        
 };

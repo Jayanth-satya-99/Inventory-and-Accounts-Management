@@ -11,17 +11,20 @@ class LineItem : public BaseEntity{
     ProductVariant* variant_;
     int quantity_;
     double pricePerUnit_;
-   bool returned_;
+    bool returned_;
+    std::string batchNo_;
 
     public:
     LineItem(ProductVariant* variant,
         int quantity,
         double pricePerUnit,
-        bool returned=false
-    ):variant_(variant),quantity_(quantity),pricePerUnit_(pricePerUnit),returned_(returned){
+        bool returned=false,
+        std::string batchNo=""
+    ):variant_(variant),quantity_(quantity),pricePerUnit_(pricePerUnit),returned_(returned),batchNo_(batchNo){
         if(variant==nullptr)throw std:: invalid_argument("Lineitem: product varant cannot br nullptr");
         if(quantity<=0)throw std::invalid_argument("Line item: quantity should be positive");
         if(pricePerUnit<0) throw std::invalid_argument("LineItem: price per unit shold not be negative");
+        if(batchNo.empty()&&variant->getProduct()->getProductType()=="PerishableProduct" )throw std::invalid_argument("LineItem: batchNo should not be empty for Perishhable items");
         
         
     }
@@ -29,12 +32,14 @@ class LineItem : public BaseEntity{
         ProductVariant* variant,
         int quantity,
         double pricePerUnit,
-        bool returned
-    ):BaseEntity(id,c,u),variant_(variant),quantity_(quantity),pricePerUnit_(pricePerUnit),returned_(returned){
+        bool returned,
+        std::string batchNo=""
+    ):BaseEntity(id,c,u),variant_(variant),quantity_(quantity),pricePerUnit_(pricePerUnit),returned_(returned),batchNo_(batchNo){
         if(variant==nullptr)throw std:: invalid_argument("Lineitem: product varant cannot br nullptr");
         
         if(quantity<=0)throw std::invalid_argument("Line item: quantity should be positive");
-         if(pricePerUnit<0) throw std::invalid_argument("LineItem: price per unit shold not be negative");
+        if(pricePerUnit<0) throw std::invalid_argument("LineItem: price per unit shold not be negative");
+        if(batchNo.empty()&&variant->getProduct()->getProductType()=="PerishableProduct" )throw std::invalid_argument("LineItem: batchNo should not be empty for Perishhable items");
     }
 
     std ::string GetEntityType()const override{return "LineItem";}
@@ -45,10 +50,12 @@ class LineItem : public BaseEntity{
     double getPricePerUnit()const{return pricePerUnit_;}
     int getProductVariantId()const{return variant_->getId();}
     ProductVariant* getProductVaraint()const {return variant_;}
+    std::string getBatchNo()const{return batchNo_;}
     void Display()const override{
         std::cout<<" Name:"<<variant_->getProduct()->getName()
             <<" Company:"<<variant_->getProduct()->getCompany()->getName()
             <<" Varaiant:"<<variant_->getPackSize()<<" "<<variant_->getUnit()
+            <<" Batch No:"<<batchNo_
             <<" Quantity:"<<quantity_
             <<" PricePerUnit:"<<pricePerUnit_
             <<" Total Price:"<<getTotal()<<"\n";
@@ -59,6 +66,7 @@ class LineItem : public BaseEntity{
         return variant_->getProduct()->getName()
             +" |"+variant_->getProduct()->getCompany()->getName()
             +" |"+variant_->getPackSize()+" "+ variant_->getUnit()
+            +" |"+batchNo_
             +" |"+std::to_string(quantity_)
             +" |"+std::to_string(pricePerUnit_)
             +" |"+ std::to_string(getTotal())
@@ -68,6 +76,7 @@ class LineItem : public BaseEntity{
         if(variant_==nullptr)throw std:: runtime_error("Line Item: product varaiant cannot be nullptr");
          if(quantity_<=0)throw std::runtime_error("Line item: quantity should be positive");
           if(pricePerUnit_<0) throw std::runtime_error("LineItem: price per unit shold not be negative");
+           if(batchNo_.empty()&&variant_->getProduct()->getProductType()=="PerishableProduct" )throw std::runtime_error("LineItem: batchNo should not be empty for Perishhable items");
 
 
     }
