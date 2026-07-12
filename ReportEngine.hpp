@@ -1,373 +1,441 @@
 #pragma once
 
-#include "Company.hpp"
-#include "Distributor.hpp"
-#include "PermanentCustomer.hpp"
-#include "TemporaryCustomer.hpp"
-#include "RetailShop.hpp"
-#include "Category.hpp"
-#include "PurchaseOrder.hpp"
-#include "SaleOrder.hpp"
+#include "PartyManager.hpp"
+#include "StockManager.hpp"
 #include "CustomerLedger.hpp"
 #include "CompanyLedger.hpp"
-#include <unordered_map>
 
-#include <vector>
-#include <string>
 #include <iostream>
-#include <stdexcept>
-#include <algorithm>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <string>
+#include <vector>
+#include <map>
+#include <bits/stdc++.h>
 
-// PartyManager — Singleton
-// Owns all party objects (Company, Distributor, Customer subtypes, RetailShop)
-// Provides add / get / remove and cross-object queries
-//
-// Usage:
-//   PartyManager& pm = PartyManager::getInstance();
-//   Company* c = pm.addCompany("Syngenta", "", "", "", false, DateTime(0), "");
-//   Distributor* d = pm.addDistributor("Ram Traders", "9876543210", "", "Odisha", "Odisha");
-class PartyManager
+// ReportEngine — Singleton
+// Pulls data from PartyManager and StockManager
+// Provides display reports + CSV exports
+class ReportEngine
 {
 private:
-    // ── Storage ───────────────────────────────────────────────────────────────
-    std::vector<Company*>           companies_;
-    std::vector<Distributor*>       distributors_;
-    std::vector<PermanentCustomer*> permCustomers_;
-    std::vector<TemporaryCustomer*> tempCustomers_;
-    std::vector<RetailShop*>        retailShops_;
-    std::vector<SaleOrder*>     allSaleOrders_;
-    std::vector<PurchaseOrder*> allPurchaseOrders_;
-    std::unordered_map<int, CustomerLedgerPage*> customerLedgers_;
-    std::unordered_map<int, CompanyLedgerPage*>  companyLedgers_;
-    // ── Singleton ─────────────────────────────────────────────────────────────
-    PartyManager() = default;
+    ReportEngine() = default;
+
+    PartyManager& pm_ = PartyManager::getInstance();
+    StockManager& sm_ = StockManager::getInstance();
+
+    // ── CSV helpers ───────────────────────────────────────────────────────────
+    static std::string csvEscape(const std::string& s)
+    {
+        if (s.find(',') == std::string::npos &&
+            s.find('"') == std::string::npos &&
+            s.find('\n') == std::string::npos)
+            return s;
+        std::string out = "\"";
+        for (char c : s) { if (c == '"') out += '"'; out += c; }
+        out += '"';
+        return out;
+    }
+
+    static bool inRange(const DateTime& date, const DateTime& from, const DateTime& to)
+    {
+        return date >= from && date <= to;
+    }
+
+    static std::string modeStr(Payment_Mode m)
+    {
+        switch(m) {
+            case Payment_Mode::Cash:          return "Cash";
+            case Payment_Mode::UPI:           return "UPI";
+            case Payment_Mode::Card:          return "Card";
+            case Payment_Mode::Bank_Transfer: return "Bank Transfer";
+            case Payment_Mode::Cheque:        return "Cheque";
+            default:                          return "Other";
+        }
+    }
+
+    static std::string entryStr(Ledger_Entry_Type t)
+    {
+        switch(t) {
+            case Ledger_Entry_Type::SaleBill:        return "Sale Bill";
+            case Ledger_Entry_Type::PurchaseBill:    return "Purchase Bill";
+            case Ledger_Entry_Type::LoanRepayment:   return "Loan Repayment";
+            case Ledger_Entry_Type::AdvanceDeposit:  return "Advance Deposit";
+            case Ledger_Entry_Type::AdvanceUsed:     return "Advance Used";
+            case Ledger_Entry_Type::SupplierPayment: return "Supplier Payment";
+            case Ledger_Entry_Type::Return:          return "Return";
+            default:                                 return "Other";
+        }
+    }
+
+    static void writeToFile(const std::string& path, const std::string& content)
+    {
+        std::ofstream f(path);
+        if (!f.is_open())
+            throw std::runtime_error("ReportEngine: cannot open file: " + path);
+        f << content;
+        f.close();
+    }
 
 public:
-    static PartyManager& getInstance()
+    static ReportEngine& getInstance()
     {
-        static PartyManager instance;
+        static ReportEngine instance;
         return instance;
     }
-    PartyManager(const PartyManager&)            = delete;
-    PartyManager& operator=(const PartyManager&) = delete;
-    // ── Destructor ────────────────────────────────────────────────────────────
-    ~PartyManager()
-    {
-        for (auto* p : companies_)    delete p;
-        for (auto* p : distributors_) delete p;
-        for (auto* p : permCustomers_)delete p;
-        for (auto* p : tempCustomers_)delete p;
-        for (auto* p : retailShops_)  delete p;
-        
-    }
-
-    void registerSaleOrder(SaleOrder* order)     { allSaleOrders_.push_back(order); }
-    void registerPurchaseOrder(PurchaseOrder* order) { allPurchaseOrders_.push_back(order); }
-
-    const std::vector<SaleOrder*>&     getAllSaleOrders()     const { return allSaleOrders_; }
-    const std::vector<PurchaseOrder*>& getAllPurchaseOrders() const { return allPurchaseOrders_; }
-
-
-    CustomerLedgerPage* getOrCreateCustomerLedger(Party* party)
-    {
-        auto it = customerLedgers_.find(party->getId());
-        if (it != customerLedgers_.end()) return it->second;
-        CustomerLedgerPage* page = new CustomerLedgerPage(party);
-        customerLedgers_[party->getId()] = page;
-        return page;
-    }
-
-    CompanyLedgerPage* getOrCreateCompanyLedger(Party* party)
-    {
-        auto it = companyLedgers_.find(party->getId());
-        if (it != companyLedgers_.end()) return it->second;
-        CompanyLedgerPage* page = new CompanyLedgerPage(party);
-        companyLedgers_[party->getId()] = page;
-        return page;
-    }
-
-    const std::unordered_map<int, CustomerLedgerPage*>& getAllCustomerLedgers() const { return customerLedgers_; }
-    const std::unordered_map<int, CompanyLedgerPage*>&  getAllCompanyLedgers()  const { return companyLedgers_; }
-
+    ReportEngine(const ReportEngine&)            = delete;
+    ReportEngine& operator=(const ReportEngine&) = delete;
 
     // ═══════════════════════════════════════════════════════════════
-    //  Company
+    //  1. Sales Summary
     // ═══════════════════════════════════════════════════════════════
-    Company* addCompany(const std::string& name,
-                        const std::string& phone,
-                        const std::string& email,
-                        const std::string& address,
-                        bool hasDealership,
-                        DateTime dealershipExpiry,
-                        const std::string& gstNumber)
+    void displaySalesSummary(DateTime from, DateTime to) const
     {
-        companies_.push_back(
-            new Company(name, phone, email, address,
-                        hasDealership, dealershipExpiry, gstNumber));
-        return companies_.back();
+        double total = 0.0; int count = 0;
+        for (SaleOrder* o : pm_.getAllSaleOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            total += o->getTotalAmount(); count++;
+        }
+        std::cout << "\n===== Sales Summary =====\n"
+                  << "Period: " << from.ToDateString() << " to " << to.ToDateString() << "\n"
+                  << "Orders:  " << count << "\n"
+                  << "Revenue: Rs" << std::fixed << std::setprecision(2) << total << "\n";
     }
 
-    Company* getCompanyById(int id) const
+    void exportSalesSummaryCSV(const std::string& path,
+                               DateTime from, DateTime to) const
     {
-        for (Company* c : companies_)
-            if (c->getId() == id) return c;
-        return nullptr;
+        std::ostringstream ss;
+        ss << "OrderId,Customer,Date,Total,Paid,Due,Status\n";
+        for (SaleOrder* o : pm_.getAllSaleOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            std::string status;
+            switch(o->getStatus()) {
+                case Order_Status::Pending: status = "Pending"; break;
+                case Order_Status::Partial: status = "Partial"; break;
+                case Order_Status::Paid:    status = "Paid";    break;
+            }
+            ss << o->getId() << ","
+               << csvEscape(o->getCustomer()->getName()) << ","
+               << o->getOrderDate().ToDateString() << ","
+               << o->getTotalAmount() << ","
+               << o->getTotalPaid() << ","
+               << o->getAmountDue() << ","
+               << status << "\n";
+        }
+        writeToFile(path, ss.str());
+        std::cout << "Exported sales summary to " << path << "\n";
     }
 
-    Company* getCompanyByName(const std::string& name) const
+    // ═══════════════════════════════════════════════════════════════
+    //  2. Purchase Summary
+    // ═══════════════════════════════════════════════════════════════
+    void displayPurchaseSummary(DateTime from, DateTime to) const
     {
-        for (Company* c : companies_)
-            if (c->getName() == name) return c;
-        return nullptr;
+        double total = 0.0; int count = 0;
+        for (PurchaseOrder* o : pm_.getAllPurchaseOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            total += o->getTotalAmount(); count++;
+        }
+        std::cout << "\n===== Purchase Summary =====\n"
+                  << "Period: " << from.ToDateString() << " to " << to.ToDateString() << "\n"
+                  << "Orders:  " << count << "\n"
+                  << "Spent:   Rs" << std::fixed << std::setprecision(2) << total << "\n";
     }
 
-    const std::vector<Company*>& getAllCompanies() const { return companies_; }
-
-    bool removeCompany(int id)
+    void exportPurchaseSummaryCSV(const std::string& path,
+                                  DateTime from, DateTime to) const
     {
-        for (auto it = companies_.begin(); it != companies_.end(); ++it) {
-            if ((*it)->getId() == id) {
-                delete *it;
-                companies_.erase(it);
-                return true;
+        std::ostringstream ss;
+        ss << "OrderId,Supplier,Date,Total,Paid,Due,PaymentType,Status\n";
+        for (PurchaseOrder* o : pm_.getAllPurchaseOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            std::string status, ptype;
+            switch(o->getStatus()) {
+                case Order_Status::Pending: status = "Pending"; break;
+                case Order_Status::Partial: status = "Partial"; break;
+                case Order_Status::Paid:    status = "Paid";    break;
+            }
+            ptype = (o->getPaymentType() == Payment_Type::Loan) ? "Loan" : "Spot";
+            ss << o->getId() << ","
+               << csvEscape(o->getSupplier()->getName()) << ","
+               << o->getOrderDate().ToDateString() << ","
+               << o->getTotalAmount() << ","
+               << o->getAmountPaid() << ","
+               << o->getAmountDue() << ","
+               << ptype << ","
+               << status << "\n";
+        }
+        writeToFile(path, ss.str());
+        std::cout << "Exported purchase summary to " << path << "\n";
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  3. Outstanding Dues
+    // ═══════════════════════════════════════════════════════════════
+    void displayOutstandingDues() const
+    {
+        std::cout << "\n===== Outstanding Customer Dues =====\n";
+        for (auto& [id, ledger] : pm_.getAllCustomerLedgers()) {
+            double due = ledger->totalDue();
+            if (due > 0.001)
+                std::cout << "  " << ledger->getParty()->getName()
+                          << "  owes Rs" << std::fixed << std::setprecision(2) << due << "\n";
+        }
+        std::cout << "\n===== Outstanding Supplier Dues =====\n";
+        for (auto& [id, ledger] : pm_.getAllCompanyLedgers()) {
+            double due = ledger->totalDue();
+            if (due > 0.001)
+                std::cout << "  We owe " << ledger->getParty()->getName()
+                          << "  Rs" << std::fixed << std::setprecision(2) << due << "\n";
+        }
+    }
+
+    void exportOutstandingDuesCSV(const std::string& path) const
+    {
+        std::ostringstream ss;
+        ss << "Type,Party,TotalBilled,TotalReceived,Outstanding\n";
+        for (auto& [id, ledger] : pm_.getAllCustomerLedgers())
+            ss << "Customer,"
+               << csvEscape(ledger->getParty()->getName()) << ","
+               << ledger->totalBilled() << ","
+               << ledger->totalReceived() << ","
+               << ledger->totalDue() << "\n";
+        for (auto& [id, ledger] : pm_.getAllCompanyLedgers())
+            ss << "Supplier,"
+               << csvEscape(ledger->getParty()->getName()) << ","
+               << ledger->totalPurchased() << ","
+               << ledger->totalPaid() << ","
+               << ledger->totalDue() << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported outstanding dues to " << path << "\n";
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  4. Stock Report
+    // ═══════════════════════════════════════════════════════════════
+    void displayStockReport() const
+    {
+        std::cout << "\n===== Stock Report =====\n";
+        for (StockItem* item : sm_.getAllStockItems())
+            item->Display();
+        auto low = sm_.getLowStockItems();
+        if (!low.empty()) {
+            std::cout << "\n--- Low Stock Alerts ---\n";
+            for (StockItem* item : low)
+                std::cout << "  [LOW] " << item->getProductVariant()->getDisplayName()
+                          << "  Qty=" << item->getQuantity()
+                          << "  Min=" << item->getMinStockLevel() << "\n";
+        }
+    }
+
+    void exportStockReportCSV(const std::string& path) const
+    {
+        std::ostringstream ss;
+        ss << "VariantId,Product,PackSize,Quantity,MinLevel,LowStock\n";
+        for (StockItem* item : sm_.getAllStockItems())
+            ss << item->getProductVariant()->getId() << ","
+               << csvEscape(item->getProductVariant()->getProduct()->getName()) << ","
+               << csvEscape(item->getProductVariant()->getPackSize()) << ","
+               << item->getQuantity() << ","
+               << item->getMinStockLevel() << ","
+               << (item->isLowStock() ? "Yes" : "No") << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported stock report to " << path << "\n";
+    }
+
+    void exportExpiryReportCSV(const std::string& path, DateTime before) const
+    {
+        std::ostringstream ss;
+        ss << "BatchNo,Product,PackSize,Quantity,ExpiryDate\n";
+        for (ExpiryBatch* b : sm_.getExpiringBefore(before))
+            ss << csvEscape(b->batchNo_) << ","
+               << csvEscape(b->variant_->getProduct()->getName()) << ","
+               << csvEscape(b->variant_->getPackSize()) << ","
+               << b->quantity_ << ","
+               << b->expiryDate_.ToDateString() << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported expiry report to " << path << "\n";
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    //  5. Product-wise Sales Report
+    // ═══════════════════════════════════════════════════════════════
+    void exportProductWiseSalesCSV(const std::string& path,
+                                   DateTime from, DateTime to) const
+    {
+        // map: productId -> {name, totalQty, totalRevenue}
+        struct PStat { std::string name; int qty = 0; double revenue = 0.0; };
+        std::map<int, PStat> stats;
+
+        for (SaleOrder* o : pm_.getAllSaleOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            for (LineItem* item : o->getItems()) {
+                if (item->isReturned()) continue;
+                int pid = item->getProductVaraint()->getProduct()->getId();
+                stats[pid].name    = item->getProductVaraint()->getProduct()->getName();
+                stats[pid].qty    += item->getQuantity();
+                stats[pid].revenue+= item->getTotal();
             }
         }
-        return false;
+
+        std::ostringstream ss;
+        ss << "ProductId,ProductName,TotalQtySold,TotalRevenue\n";
+        for (auto& [id, s] : stats)
+            ss << id << "," << csvEscape(s.name) << ","
+               << s.qty << "," << s.revenue << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported product-wise sales to " << path << "\n";
     }
+
     // ═══════════════════════════════════════════════════════════════
-    //  Distributor
+    //  6. Variant-wise Sales Report
     // ═══════════════════════════════════════════════════════════════
-    Distributor* addDistributor(const std::string& name,
-                                const std::string& phone,
-                                const std::string& email,
-                                const std::string& address,
-                                const std::string& areaServed,
-                                std::vector<Category*> categories = {})
+    void exportVariantWiseSalesCSV(const std::string& path,
+                                   DateTime from, DateTime to) const
     {
-        distributors_.push_back(
-            new Distributor(name, phone, email, address, areaServed, categories));
-        return distributors_.back();
-    }
+        struct VStat { std::string product, packSize; int qty = 0; double revenue = 0.0; };
+        std::map<int, VStat> stats;
 
-    Distributor* getDistributorById(int id) const
-    {
-        for (Distributor* d : distributors_)
-            if (d->getId() == id) return d;
-        return nullptr;
-    }
-     std::vector<Distributor*> getDistributorsByName(const std::string& name)const{
-        std::vector<Distributor*>result;
-        for(Distributor* d:distributors_){
-            if(d->getName()==name)result.push_back(d);
-        }
-        return result;
-    }
-
-    const std::vector<Distributor*>& getAllDistributors() const { return distributors_; }
-
-    // Cross-object query: all distributors that supply a given category
-    std::vector<Distributor*> getDistributorsForCategory(int categoryId) const
-    {
-        std::vector<Distributor*> result;
-        for (Distributor* d : distributors_) {
-            for (Category* cat : d->getSupportedCategory()) {
-                if (cat->getId() == categoryId) {
-                    result.push_back(d);
-                    break;
-                }
+        for (SaleOrder* o : pm_.getAllSaleOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            for (LineItem* item : o->getItems()) {
+                if (item->isReturned()) continue;
+                int vid = item->getProductVaraint()->getId();
+                stats[vid].product  = item->getProductVaraint()->getProduct()->getName();
+                stats[vid].packSize = item->getProductVaraint()->getPackSize();
+                stats[vid].qty     += item->getQuantity();
+                stats[vid].revenue += item->getTotal();
             }
         }
-        return result;
+
+        std::ostringstream ss;
+        ss << "VariantId,Product,PackSize,TotalQtySold,TotalRevenue\n";
+        for (auto& [id, s] : stats)
+            ss << id << "," << csvEscape(s.product) << ","
+               << csvEscape(s.packSize) << ","
+               << s.qty << "," << s.revenue << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported variant-wise sales to " << path << "\n";
     }
 
-    bool removeDistributor(int id)
+    // ═══════════════════════════════════════════════════════════════
+    //  7. Day-wise Sales Report (per variant)
+    // ═══════════════════════════════════════════════════════════════
+    void exportDayWiseSalesCSV(const std::string& path,
+                               DateTime from, DateTime to) const
     {
-        for (auto it = distributors_.begin(); it != distributors_.end(); ++it) {
-            if ((*it)->getId() == id) {
-                delete *it;
-                distributors_.erase(it);
-                return true;
+        // map: date string -> {qty, revenue}
+        struct DStat { int qty = 0; double revenue = 0.0; };
+        // outer map: variantId -> date -> DStat
+        std::map<int, std::map<std::string, DStat>> stats;
+        std::map<int, std::string> variantNames;
+
+        for (SaleOrder* o : pm_.getAllSaleOrders()) {
+            if (!inRange(o->getOrderDate(), from, to)) continue;
+            std::string dateStr = o->getOrderDate().ToDateString();
+            for (LineItem* item : o->getItems()) {
+                if (item->isReturned()) continue;
+                int vid = item->getProductVaraint()->getId();
+                variantNames[vid] = item->getProductVaraint()->getProduct()->getName()
+                                  + " - " + item->getProductVaraint()->getPackSize();
+                stats[vid][dateStr].qty     += item->getQuantity();
+                stats[vid][dateStr].revenue += item->getTotal();
             }
         }
-        return false;
+
+        std::ostringstream ss;
+        ss << "VariantId,VariantName,Date,QtySold,Revenue\n";
+        for (auto& [vid, dateMap] : stats)
+            for (auto& [date, s] : dateMap)
+                ss << vid << "," << csvEscape(variantNames[vid]) << ","
+                   << date << "," << s.qty << "," << s.revenue << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported day-wise sales to " << path << "\n";
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  PermanentCustomer
+    //  8. Customer Statement
     // ═══════════════════════════════════════════════════════════════
-    PermanentCustomer* addPermanentCustomer(const std::string& name,
-                                            const std::string& phone,
-                                            const std::string& email,
-                                            const std::string& address,
-                                            double creditLimit = 0.0)
+    void exportCustomerStatementCSV(const std::string& path, int partyId) const
     {
-        permCustomers_.push_back(
-            new PermanentCustomer(name, phone, email, address, creditLimit));
-        return permCustomers_.back();
-    }
+        auto it = pm_.getAllCustomerLedgers().find(partyId);
+        if (it == pm_.getAllCustomerLedgers().end())
+            throw std::runtime_error("ReportEngine: no ledger for partyId " + std::to_string(partyId));
 
-    PermanentCustomer* getPermanentCustomerById(int id) const
-    {
-        for (PermanentCustomer* c : permCustomers_)
-            if (c->getId() == id) return c;
-        return nullptr;
-    }
-     std::vector<PermanentCustomer*> getPermanentCustomersByName(const std::string& name)const{
-        std::vector<PermanentCustomer*>result;
-        for(PermanentCustomer* c:permCustomers_){
-            if(c->getName()==name)result.push_back(c);
-        }
-        return result;
-    }
-
-    const std::vector<PermanentCustomer*>& getAllPermanentCustomers() const
-    { return permCustomers_; }
-
-    bool removePermanentCustomer(int id)
-    {
-        for (auto it = permCustomers_.begin(); it != permCustomers_.end(); ++it) {
-            if ((*it)->getId() == id) {
-                delete *it;
-                permCustomers_.erase(it);
-                return true;
-            }
-        }
-        return false;
+        CustomerLedgerPage* ledger = it->second;
+        std::ostringstream ss;
+        ss << "Customer: " << ledger->getParty()->getName() << "\n";
+        ss << "Date,EntryType,Amount,Mode,OrderId\n";
+        for (const LedgerEntry& e : ledger->getEntries())
+            ss << e.date.ToDateString() << ","
+               << csvEscape(entryStr(e.entryType)) << ","
+               << e.amount << ","
+               << csvEscape(modeStr(e.mode)) << ","
+               << (e.orderId == -1 ? "-" : std::to_string(e.orderId)) << "\n";
+        ss << "\nTotal Billed," << ledger->totalBilled() << "\n";
+        ss << "Total Received," << ledger->totalReceived() << "\n";
+        ss << "Outstanding," << ledger->totalDue() << "\n";
+        ss << "Advance Balance," << ledger->getAdvanceBalance() << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported customer statement to " << path << "\n";
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  TemporaryCustomer
+    //  9. Company/Distributor Statement
     // ═══════════════════════════════════════════════════════════════
-    TemporaryCustomer* addTemporaryCustomer(const std::string& name,
-                                            const std::string& phone,
-                                            const std::string& email  = "",
-                                            const std::string& address = "")
+    void exportCompanyStatementCSV(const std::string& path, int partyId) const
     {
-        tempCustomers_.push_back(
-            new TemporaryCustomer(name, phone, email, address));
-        return tempCustomers_.back();
-    }
+        auto it = pm_.getAllCompanyLedgers().find(partyId);
+        if (it == pm_.getAllCompanyLedgers().end())
+            throw std::runtime_error("ReportEngine: no ledger for partyId " + std::to_string(partyId));
 
-    TemporaryCustomer* getTemporaryCustomerById(int id) const
-    {
-        for (TemporaryCustomer* c : tempCustomers_)
-            if (c->getId() == id) return c;
-        return nullptr;
-    }
-     std::vector<TemporaryCustomer*> getTemporaryCustomersByName(const std::string& name)const{
-        std::vector<TemporaryCustomer*>result;
-        for(TemporaryCustomer* c:tempCustomers_){
-            if(c->getName()==name)result.push_back(c);
-        }
-        return result;
-    }
-
-
-    const std::vector<TemporaryCustomer*>& getAllTemporaryCustomers() const
-    { return tempCustomers_; }
-
-    bool removeTemporaryCustomer(int id)
-    {
-        for (auto it = tempCustomers_.begin(); it != tempCustomers_.end(); ++it) {
-            if ((*it)->getId() == id) {
-                delete *it;
-                tempCustomers_.erase(it);
-                return true;
-            }
-        }
-        return false;
+        CompanyLedgerPage* ledger = it->second;
+        std::ostringstream ss;
+        ss << "Supplier: " << ledger->getParty()->getName() << "\n";
+        ss << "Date,EntryType,Amount,Mode,OrderId\n";
+        for (const LedgerEntry& e : ledger->getEntries())
+            ss << e.date.ToDateString() << ","
+               << csvEscape(entryStr(e.entryType)) << ","
+               << e.amount << ","
+               << csvEscape(modeStr(e.mode)) << ","
+               << (e.orderId == -1 ? "-" : std::to_string(e.orderId)) << "\n";
+        ss << "\nTotal Purchased," << ledger->totalPurchased() << "\n";
+        ss << "Total Paid," << ledger->totalPaid() << "\n";
+        ss << "Outstanding," << ledger->totalDue() << "\n";
+        ss << "Advance Balance," << ledger->getAdvanceBalance() << "\n";
+        writeToFile(path, ss.str());
+        std::cout << "Exported supplier statement to " << path << "\n";
     }
 
     // ═══════════════════════════════════════════════════════════════
-    //  RetailShop
+    //  10. Export Everything
     // ═══════════════════════════════════════════════════════════════
-    RetailShop* addRetailShop(const std::string& name,
-                              const std::string& phone,
-                              const std::string& email,
-                              const std::string& address,
-                              //const std::string& shopType  = "",
-                              const std::string& gstNumber = "")
+    void exportAll(const std::string& folder,
+                   DateTime from, DateTime to) const
     {
-        retailShops_.push_back(
-            new RetailShop(name, phone, email, address,  gstNumber));//shopType,
-        return retailShops_.back();
+        auto p = [&](const std::string& f){ return folder + "/" + f; };
+
+        exportSalesSummaryCSV   (p("sales_summary.csv"),    from, to);
+        exportPurchaseSummaryCSV(p("purchase_summary.csv"), from, to);
+        exportOutstandingDuesCSV(p("outstanding_dues.csv"));
+        exportStockReportCSV    (p("stock_report.csv"));
+        exportExpiryReportCSV   (p("expiry_report.csv"), DateTime::FromDateString("2099-12-31"));
+        exportProductWiseSalesCSV(p("product_sales.csv"), from, to);
+        exportVariantWiseSalesCSV(p("variant_sales.csv"), from, to);
+        exportDayWiseSalesCSV    (p("day_wise_sales.csv"), from, to);
+
+        // Individual customer statements
+        for (auto& [id, ledger] : pm_.getAllCustomerLedgers())
+            exportCustomerStatementCSV(
+                p("customer_" + std::to_string(id) + ".csv"), id);
+
+        // Individual supplier statements
+        for (auto& [id, ledger] : pm_.getAllCompanyLedgers())
+            exportCompanyStatementCSV(
+                p("supplier_" + std::to_string(id) + ".csv"), id);
+
+        std::cout << "All reports exported to " << folder << "\n";
     }
-
-    RetailShop* getRetailShopById(int id) const
-    {
-        for (RetailShop* r : retailShops_)
-            if (r->getId() == id) return r;
-        return nullptr;
-    }
-     std::vector<RetailShop*> getRetailShopsByName(const std::string& name)const{
-        std::vector<RetailShop*>result;
-        for(RetailShop* r : retailShops_){
-            if(r->getName()==name)result.push_back(r);
-        }
-        return result;
-    }
-    
-
-    const std::vector<RetailShop*>& getAllRetailShops() const { return retailShops_; }
-
-    bool removeRetailShop(int id)
-    {
-        for (auto it = retailShops_.begin(); it != retailShops_.end(); ++it) {
-            if ((*it)->getId() == id) {
-                delete *it;
-                retailShops_.erase(it);
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Unified lookup (search any party by id across all types)
-    // ═══════════════════════════════════════════════════════════════
-    Party* getPartyById(int id) const
-    {
-        if (auto* p = getCompanyById(id))           return p;
-        if (auto* p = getDistributorById(id))       return p;
-        if (auto* p = getPermanentCustomerById(id)) return p;
-        if (auto* p = getTemporaryCustomerById(id)) return p;
-        if (auto* p = getRetailShopById(id))        return p;
-        return nullptr;
-    }
-
-    // ═══════════════════════════════════════════════════════════════
-    //  Display helpers
-    // ═══════════════════════════════════════════════════════════════
-    void displayAll() const
-    {
-        auto section = [](const std::string& title) {
-            std::cout << "\n===== " << title << " =====\n";
-        };
-
-        section("Companies (" + std::to_string(companies_.size()) + ")");
-        for (auto* c : companies_) c->Display();
-
-        section("Distributors (" + std::to_string(distributors_.size()) + ")");
-        for (auto* d : distributors_) d->Display();
-
-        section("Permanent Customers (" + std::to_string(permCustomers_.size()) + ")");
-        for (auto* c : permCustomers_) c->Display();
-
-        section("Temporary Customers (" + std::to_string(tempCustomers_.size()) + ")");
-        for (auto* c : tempCustomers_) c->Display();
-
-        section("Retail Shops (" + std::to_string(retailShops_.size()) + ")");
-        for (auto* r : retailShops_) r->Display();
-
-        std::cout << "============================================\n";
-    }
-
-    int totalPartyCount() const
-    {
-        return (int)(companies_.size() + distributors_.size() +
-                     permCustomers_.size() + tempCustomers_.size() +
-                     retailShops_.size());
-    }
-
-    
 };

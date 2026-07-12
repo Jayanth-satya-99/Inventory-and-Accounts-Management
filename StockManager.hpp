@@ -61,6 +61,7 @@ public:
                 list.push_back(item);
         return list;
     }
+    std::vector<StockItem*>getAllStockItems() const{return stock_;}
     void addStock(int variantId, int qty, int purchaseOrderId,
                   const std::string &batchNo = "", DateTime expiryDate = DateTime())
     {
@@ -96,15 +97,15 @@ public:
         }
         return list;
     }
-    std::vector<std::vector<ExpiryBatch *>> getExpiringBefore(DateTime date, int c = 0)
-    {
-        std::vector<std::vector<ExpiryBatch *>> list;
-        for (StockItem *item : stock_)
-        {
-            list.push_back(item->getExpiringBefore(date));
-        }
-        return list;
-    }
+    // std::vector<std::vector<ExpiryBatch *>> getExpiringBefore(DateTime date, int c = 0)
+    // {
+    //     std::vector<std::vector<ExpiryBatch *>> list;
+    //     for (StockItem *item : stock_)
+    //     {
+    //         list.push_back(item->getExpiringBefore(date));
+    //     }
+    //     return list;
+    // }
 
      void displayAll() const
     {
